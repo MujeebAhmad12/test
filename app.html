@@ -1,0 +1,279 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wst</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background: #f4f6f8;
+  padding: 30px;
+  text-align: center;
+}
+
+button {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  background: #087f5b;
+  cursor: pointer;
+  margin: 5px;
+}
+
+.stop {
+  background: #d63031;
+}
+
+#status {
+  margin: 20px;
+  font-weight: bold;
+}
+
+#recordingSide {
+  position: fixed;
+  top: 100px;
+  right: 15px;
+  width: 260px;
+  max-height: 75vh;
+  overflow-y: auto;
+  z-index: 999;
+}
+
+.recording-card {
+  background: white;
+  padding: 14px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  box-shadow: 0 3px 12px #0002;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recording-card video,
+.recording-card audio {
+  width: 100%;
+  margin-top: 12px;
+  display: none;
+}
+
+.recording-card.open video,
+.recording-card.open audio {
+  display: block;
+}
+
+.download {
+  display: inline-block;
+  margin-top: 10px;
+  color: #087f5b;
+}
+</style>
+</head>
+
+<body>
+
+<h2></h2>
+
+<button id="micBtn">V</button>
+<button id="cameraBtn">📹 C</button>
+<button id="stopBtn" class="stop">ST</button>
+
+<p id="status">Rs</p>
+
+<div id="recordingSide"></div>
+
+<script>
+
+let recorder = null;
+let stream = null;
+let chunks = [];
+let recordingType = null;
+
+// Start recording
+async function startRecording(type) {
+
+  if (recorder && recorder.state === "recording") {
+    alert("Please stop current recording first!");
+    return;
+  }
+
+  try {
+
+    recordingType = type;
+    chunks = [];
+
+    document.getElementById("status").textContent =
+      "Checking camera/microphone permission...";
+
+    // Browser remembers permission after user allows it
+    const constraints = {
+      audio: true,
+      video: type === "video"
+        ? {
+            facingMode: { ideal: "environment" }
+          }
+        : false
+    };
+
+    stream = await navigator.mediaDevices.getUserMedia(
+      constraints
+    );
+
+    // No live video preview
+    // Torch is not requested or enabled by this code
+
+    // Select supported recording format
+    const mimeTypes = type === "audio"
+      ? ["audio/webm;codecs=opus", "audio/webm"]
+      : ["video/webm;codecs=vp8,opus", "video/webm"];
+
+    const supportedType = mimeTypes.find(
+      mime => MediaRecorder.isTypeSupported(mime)
+    );
+
+    recorder = new MediaRecorder(
+      stream,
+      supportedType ? { mimeType: supportedType } : {}
+    );
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunks.push(event.data);
+      }
+    };
+
+    recorder.onstop = () => {
+
+      const blob = new Blob(chunks, {
+        type: recorder.mimeType
+      });
+
+      const url = URL.createObjectURL(blob);
+
+      createRecordingCard(url, type);
+
+      // Release camera and microphone
+      stream.getTracks().forEach(track => track.stop());
+
+      stream = null;
+
+      document.getElementById("status").textContent =
+        "Recording completed!";
+
+    };
+
+    recorder.start();
+
+    document.getElementById("status").textContent =
+      type === "audio"
+        ? "🔴 Voice recording..."
+        : "🔴 Video recording...";
+
+  } catch (error) {
+
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+
+    let message = error.message;
+
+    if (error.name === "NotAllowedError") {
+      message = "Permission denied. Please allow camera/microphone in browser settings.";
+    }
+
+    document.getElementById("status").textContent =
+      "Error: " + message;
+
+    console.error(error);
+
+  }
+}
+
+// Create recording card
+function createRecordingCard(url, type) {
+
+  const side = document.getElementById("recordingSide");
+
+  const card = document.createElement("div");
+  card.className = "recording-card";
+
+  const title = document.createElement("strong");
+
+  title.textContent = type === "audio"
+    ? "🎤 Voice Recording"
+    : "📹 Video Recording";
+
+  card.appendChild(title);
+
+  const media = document.createElement(
+    type === "audio" ? "audio" : "video"
+  );
+
+  media.src = url;
+  media.controls = true;
+  media.playsInline = true;
+  media.preload = "metadata";
+
+  card.appendChild(media);
+
+  const download = document.createElement("a");
+
+  download.href = url;
+  download.download = type === "audio"
+    ? "voice-recording.webm"
+    : "video-recording.webm";
+
+  download.textContent = "⬇ Download";
+  download.className = "download";
+
+  card.appendChild(download);
+
+  // Click card to open/close
+  card.addEventListener("click", (event) => {
+
+    if (
+      event.target === download ||
+      event.target === media
+    ) {
+      return;
+    }
+
+    card.classList.toggle("open");
+
+  });
+
+  side.prepend(card);
+}
+
+// Buttons
+document.getElementById("micBtn").onclick = () => {
+  startRecording("audio");
+};
+
+document.getElementById("cameraBtn").onclick = () => {
+  startRecording("video");
+};
+
+document.getElementById("stopBtn").onclick = () => {
+
+  if (recorder && recorder.state === "recording") {
+    recorder.stop();
+  } else {
+    document.getElementById("status").textContent =
+      "No active recording!";
+  }
+
+};
+
+</script>
+
+</body>
+</html>
